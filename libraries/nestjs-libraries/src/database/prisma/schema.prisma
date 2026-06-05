@@ -26,6 +26,7 @@ model Organization {
   customers           Customer[]
   errors              Errors[]
   github              GitHub[]
+  ideas               Ideas[]
   Integration         Integration[]
   media               Media[]
   buyerOrganization   MessagesGroup[]
@@ -367,6 +368,40 @@ model Signatures {
 
   @@index([createdAt])
   @@index([organizationId])
+  @@index([deletedAt])
+}
+
+model Ideas {
+  id             String        @id @default(uuid())
+  organizationId String
+  title          String?
+  sourceUrl      String?
+  tags           String        @default("[]")
+  status         IdeaStatus    @default(INBOX)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime?
+  entries        IdeaEntries[]
+  organization   Organization  @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([status])
+  @@index([sourceUrl])
+  @@index([deletedAt])
+  @@index([updatedAt])
+}
+
+model IdeaEntries {
+  id        String    @id @default(uuid())
+  ideaId    String
+  note      String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  idea      Ideas     @relation(fields: [ideaId], references: [id])
+
+  @@index([ideaId])
+  @@index([createdAt])
   @@index([deletedAt])
 }
 
@@ -898,6 +933,14 @@ enum OrderStatus {
 enum From {
   BUYER
   SELLER
+}
+
+enum IdeaStatus {
+  INBOX
+  REVIEWING
+  READY
+  USED
+  ARCHIVED
 }
 
 enum State {
