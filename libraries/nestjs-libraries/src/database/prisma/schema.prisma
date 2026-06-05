@@ -41,6 +41,7 @@ model Organization {
   thirdParty          ThirdParty[]
   usedCodes           UsedCodes[]
   users               UserOrganization[]
+  voicePacks          VoicePacks[]
   webhooks            Webhooks[]
   oauthApp            OAuthApp[]
   oauthAuthorizations OAuthAuthorization[]
@@ -390,6 +391,23 @@ model Ideas {
   @@index([sourceUrl])
   @@index([deletedAt])
   @@index([updatedAt])
+}
+
+model VoicePacks {
+  id             String       @id @default(uuid())
+  organizationId String
+  name           String
+  description    String?
+  markdown       String
+  isDefault      Boolean      @default(false)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([organizationId])
+  @@index([isDefault])
+  @@index([deletedAt])
 }
 
 model IdeaEntries {
