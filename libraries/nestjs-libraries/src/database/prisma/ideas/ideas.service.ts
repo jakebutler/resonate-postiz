@@ -5,6 +5,7 @@ import {
   AppendIdeaEntryDto,
   CreateIdeaDraftDto,
   CreateIdeaDto,
+  GenerateIdeaDraftDto,
   IdeaStatusValue,
   UpdateIdeaStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/ideas/idea.dto';
@@ -12,6 +13,7 @@ import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/in
 import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
 import { BadRequestException } from '@nestjs/common';
 import dayjs from 'dayjs';
+import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
 
 const statusMap: Record<IdeaStatusValue, IdeaStatus> = {
   inbox: IdeaStatus.INBOX,
@@ -34,7 +36,8 @@ export class IdeasService {
   constructor(
     private _ideasRepository: IdeasRepository,
     private _integrationService: IntegrationService,
-    private _postsService: PostsService
+    private _postsService: PostsService,
+    private _openaiService: OpenaiService
   ) {}
 
   async list(
@@ -156,6 +159,89 @@ export class IdeasService {
     };
   }
 
+  async generateDraft(orgId: string, id: string, body: GenerateIdeaDraftDto) {
+    const idea = await this._ideasRepository.get(orgId, id);
+    if (!idea) {
+      throw new NotFoundException('Idea not found');
+    }
+
+    const integration = (
+      await this._integrationService.getIntegrationsList(orgId)
+    ).find((item) => item.id === body.integrationId && !item.disabled);
+    if (!integration) {
+      throw new BadRequestException('Integration not found');
+    }
+
+    const voicePack = await this._ideasRepository.getVoicePack(
+      orgId,
+      body.voicePackId
+    );
+    const ideaContext = this.buildDraftContent(idea);
+    const system = [
+      'You are an editorial brainstorming assistant inside Postiz.',
+      'You help turn upstream Ideas into draft Posts, but you never publish, schedule, or claim approval.',
+      'Ask clarifying questions before drafting unless fastDraft is true.',
+      'Return strict JSON with keys: questions, angle, structure, draft.',
+      'questions must be an array of strings. angle, structure, and draft must be strings.',
+    ].join('\n');
+    const user = [
+      `Target channel: ${integration.name} (${integration.providerIdentifier})`,
+      body.fastDraft ? 'Fast draft requested: yes' : 'Fast draft requested: no',
+      voicePack?.markdown
+        ? `Voice pack markdown:\n${voicePack.markdown}`
+        : 'Voice pack markdown: none configured.',
+      body.instructions?.trim()
+        ? `User instructions:\n${body.instructions.trim()}`
+        : '',
+      `Idea context:\n${ideaContext}`,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    const result = await this._openaiService.pioneerChat({
+      messages: [
+        { role: 'system', content: system },
+        { role: 'user', content: user },
+      ],
+      store: false,
+    });
+    const parsed = this.parseAiDraft(result.content);
+
+    return {
+      model: result.model,
+      inferenceId: result.inferenceId,
+      voicePack: voicePack
+        ? {
+            id: voicePack.id,
+            name: voicePack.name,
+            isDefault: voicePack.isDefault,
+          }
+        : undefined,
+      providerIdentifier: integration.providerIdentifier,
+      ...parsed,
+    };
+  }
+
+  async generateAndCreateDraft(
+    orgId: string,
+    id: string,
+    body: GenerateIdeaDraftDto
+  ) {
+    const generated = await this.generateDraft(orgId, id, {
+      ...body,
+      fastDraft: body.fastDraft ?? true,
+    });
+    const created = await this.createDraft(orgId, id, {
+      integrationId: body.integrationId,
+      content: generated.draft,
+    });
+
+    return {
+      ...generated,
+      created,
+    };
+  }
+
   private toStatus(status?: string) {
     return statusMap[status as IdeaStatusValue];
   }
@@ -238,5 +324,30 @@ export class IdeasService {
       tags,
       status: 'draft',
     };
+  }
+
+  private parseAiDraft(content: string) {
+    const fallback = {
+      questions: [] as string[],
+      angle: '',
+      structure: '',
+      draft: content.trim(),
+    };
+
+    try {
+      const start = content.indexOf('{');
+      const end = content.lastIndexOf('}');
+      const parsed = JSON.parse(content.slice(start, end + 1));
+      return {
+        questions: Array.isArray(parsed.questions)
+          ? parsed.questions.filter((item: unknown) => typeof item === 'string')
+          : [],
+        angle: typeof parsed.angle === 'string' ? parsed.angle : '',
+        structure: typeof parsed.structure === 'string' ? parsed.structure : '',
+        draft: typeof parsed.draft === 'string' ? parsed.draft : fallback.draft,
+      };
+    } catch (err) {
+      return fallback;
+    }
   }
 }
