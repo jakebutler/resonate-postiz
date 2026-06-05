@@ -1,6 +1,8 @@
 import { TemporalModule } from 'nestjs-temporal-core';
 import { socialIntegrationList } from '@gitroom/nestjs-libraries/integrations/integration.manager';
 
+const dedicatedHyphenatedWorkerQueues = new Set(['corvo-labs-blog']);
+
 export const getTemporalModule = (
   isWorkers: boolean,
   path?: string,
@@ -22,7 +24,11 @@ export const getTemporalModule = (
             { identifier: 'main', maxConcurrentJob: undefined },
             ...socialIntegrationList,
           ]
-            .filter((f) => f.identifier.indexOf('-') === -1)
+            .filter(
+              (f) =>
+                f.identifier.indexOf('-') === -1 ||
+                dedicatedHyphenatedWorkerQueues.has(f.identifier)
+            )
             .map((integration) => ({
               taskQueue: integration.identifier.split('-')[0],
               workflowsPath: path!,

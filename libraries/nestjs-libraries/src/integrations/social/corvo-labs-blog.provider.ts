@@ -375,11 +375,17 @@ function getConnection(
   integration: Integration,
   accessToken: string
 ): Required<CorvoLabsBlogConnection> {
-  const saved = integration.customInstanceDetails
-    ? (JSON.parse(
+  let saved = { apiKey: accessToken } as CorvoLabsBlogConnection;
+
+  if (integration.customInstanceDetails) {
+    try {
+      saved = JSON.parse(
         AuthService.fixedDecryption(integration.customInstanceDetails)
-      ) as CorvoLabsBlogConnection)
-    : ({ apiKey: accessToken } as CorvoLabsBlogConnection);
+      ) as CorvoLabsBlogConnection;
+    } catch (err) {
+      saved = { apiKey: accessToken };
+    }
+  }
 
   return {
     apiKey: saved.apiKey || accessToken,
