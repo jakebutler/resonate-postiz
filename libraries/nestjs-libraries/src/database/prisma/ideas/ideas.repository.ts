@@ -18,7 +18,9 @@ type CreateIdeaInput = {
 
 @Injectable()
 export class IdeasRepository {
-  constructor(private _ideas: PrismaRepository<'ideas' | 'ideaEntries'>) {}
+  constructor(
+    private _ideas: PrismaRepository<'ideas' | 'ideaEntries' | 'post'>
+  ) {}
 
   list(orgId: string, filters: ListIdeasFilters) {
     return this._ideas.model.ideas.findMany({
@@ -67,6 +69,25 @@ export class IdeasRepository {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
         },
+        posts: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            state: true,
+            content: true,
+            releaseURL: true,
+            createdAt: true,
+            updatedAt: true,
+            integration: {
+              select: {
+                id: true,
+                name: true,
+                providerIdentifier: true,
+              },
+            },
+          },
+        },
       },
     });
   }
@@ -89,6 +110,25 @@ export class IdeasRepository {
         entries: {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
+        },
+        posts: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            state: true,
+            content: true,
+            releaseURL: true,
+            createdAt: true,
+            updatedAt: true,
+            integration: {
+              select: {
+                id: true,
+                name: true,
+                providerIdentifier: true,
+              },
+            },
+          },
         },
       },
     });
@@ -128,7 +168,34 @@ export class IdeasRepository {
           where: { deletedAt: null },
           orderBy: { createdAt: 'asc' },
         },
+        posts: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true,
+            state: true,
+            content: true,
+            releaseURL: true,
+            createdAt: true,
+            updatedAt: true,
+            integration: {
+              select: {
+                id: true,
+                name: true,
+                providerIdentifier: true,
+              },
+            },
+          },
+        },
       },
+    });
+  }
+
+  linkPost(orgId: string, ideaId: string, postId: string) {
+    return this._ideas.model.post.update({
+      where: { id: postId, organizationId: orgId },
+      data: { ideaId },
+      select: { id: true },
     });
   }
 }
