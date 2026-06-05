@@ -48,7 +48,9 @@ export class OpenaiService {
             'claude-opus-4-7',
           messages: params.messages,
           temperature: params.temperature ?? 0.4,
-          max_tokens: params.maxTokens ?? 1800,
+          max_tokens:
+            params.maxTokens ??
+            Number(process.env.PIONEER_DRAFT_MAX_TOKENS || 3000),
           store: params.store ?? false,
         }),
       }
