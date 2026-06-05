@@ -8,6 +8,7 @@ import {
   CreateIdeaDraftDto,
   CreateIdeaDto,
   GenerateIdeaDraftDto,
+  GenerateRawIdeaDraftDto,
   UpdateIdeaStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/ideas/idea.dto';
 
@@ -36,6 +37,22 @@ export class IdeasController {
     @Query('sourceUrl') sourceUrl?: string
   ) {
     return this._ideasService.sourceMatches(org.id, sourceUrl);
+  }
+
+  @Get('/ai-draft-sessions')
+  listDraftSessions(
+    @GetOrgFromRequest() org: Organization,
+    @Query('ideaId') ideaId?: string
+  ) {
+    return this._ideasService.listDraftSessions(org.id, ideaId);
+  }
+
+  @Post('/ai-draft-sessions')
+  generateRawDraft(
+    @GetOrgFromRequest() org: Organization,
+    @Body() body: GenerateRawIdeaDraftDto
+  ) {
+    return this._ideasService.generateRawDraft(org.id, body);
   }
 
   @Get('/:id')

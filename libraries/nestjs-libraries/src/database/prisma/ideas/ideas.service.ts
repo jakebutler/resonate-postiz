@@ -6,6 +6,7 @@ import {
   CreateIdeaDraftDto,
   CreateIdeaDto,
   GenerateIdeaDraftDto,
+  GenerateRawIdeaDraftDto,
   IdeaStatusValue,
   UpdateIdeaStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/ideas/idea.dto';
@@ -85,6 +86,12 @@ export class IdeasService {
       normalizedSourceUrl,
       matches,
     };
+  }
+
+  async listDraftSessions(orgId: string, ideaId?: string) {
+    return (await this._ideasRepository.listDraftSessions(orgId, ideaId)).map(
+      (session) => this.serializeDraftSession(session)
+    );
   }
 
   async create(orgId: string, body: CreateIdeaDto) {
@@ -189,18 +196,54 @@ export class IdeasService {
       throw new NotFoundException('Idea not found');
     }
 
+    return this.generateDraftCandidate(orgId, {
+      idea,
+      integrationId: body.integrationId,
+      voicePackId: body.voicePackId,
+      instructions: body.instructions,
+      fastDraft: body.fastDraft,
+    });
+  }
+
+  async generateRawDraft(orgId: string, body: GenerateRawIdeaDraftDto) {
+    return this.generateDraftCandidate(orgId, {
+      rawNotes: body.rawNotes,
+      sourceUrl: body.sourceUrl,
+      tags: body.tags,
+      integrationId: body.integrationId,
+      voicePackId: body.voicePackId,
+      instructions: body.instructions,
+      fastDraft: body.fastDraft,
+    });
+  }
+
+  private async generateDraftCandidate(
+    orgId: string,
+    input: {
+      idea?: any;
+      rawNotes?: string;
+      sourceUrl?: string;
+      tags?: string[];
+      integrationId: string;
+      voicePackId?: string;
+      instructions?: string;
+      fastDraft?: boolean;
+    }
+  ) {
     const integration = (
       await this._integrationService.getIntegrationsList(orgId)
-    ).find((item) => item.id === body.integrationId && !item.disabled);
+    ).find((item) => item.id === input.integrationId && !item.disabled);
     if (!integration) {
       throw new BadRequestException('Integration not found');
     }
 
     const voicePack = await this._ideasRepository.getVoicePack(
       orgId,
-      body.voicePackId
+      input.voicePackId
     );
-    const ideaContext = this.buildDraftContent(idea);
+    const sourceContext = input.idea
+      ? this.buildDraftContent(input.idea)
+      : this.buildRawDraftContent(input.rawNotes!, input.sourceUrl, input.tags);
     const system = [
       'You are an editorial brainstorming assistant inside Postiz.',
       'You help turn upstream Ideas into draft Posts, but you never publish, schedule, or claim approval.',
@@ -210,14 +253,18 @@ export class IdeasService {
     ].join('\n');
     const user = [
       `Target channel: ${integration.name} (${integration.providerIdentifier})`,
-      body.fastDraft ? 'Fast draft requested: yes' : 'Fast draft requested: no',
+      input.fastDraft
+        ? 'Fast draft requested: yes'
+        : 'Fast draft requested: no',
       voicePack?.markdown
         ? `Voice pack markdown:\n${voicePack.markdown}`
         : 'Voice pack markdown: none configured.',
-      body.instructions?.trim()
-        ? `User instructions:\n${body.instructions.trim()}`
+      input.instructions?.trim()
+        ? `User instructions:\n${input.instructions.trim()}`
         : '',
-      `Idea context:\n${ideaContext}`,
+      input.idea
+        ? `Idea context:\n${sourceContext}`
+        : `Raw-note context:\n${sourceContext}`,
     ]
       .filter(Boolean)
       .join('\n\n');
@@ -230,8 +277,27 @@ export class IdeasService {
       store: false,
     });
     const parsed = this.parseAiDraft(result.content);
+    const session = await this._ideasRepository.createDraftSession(orgId, {
+      ideaId: input.idea?.id,
+      integrationId: integration.id,
+      voicePackId: voicePack?.id,
+      sourceKind: input.idea ? 'idea' : 'raw',
+      rawNotes: input.idea ? undefined : input.rawNotes?.trim(),
+      sourceUrl: input.idea?.sourceUrl || input.sourceUrl?.trim() || undefined,
+      tags: input.idea
+        ? this.parseTags(input.idea.tags)
+        : this.cleanTags(input.tags),
+      instructions: input.instructions?.trim() || undefined,
+      model: result.model,
+      inferenceId: result.inferenceId,
+      questions: parsed.questions,
+      angle: parsed.angle,
+      structure: parsed.structure,
+      draft: parsed.draft,
+    });
 
     return {
+      sessionId: session.id,
       model: result.model,
       inferenceId: result.inferenceId,
       voicePack: voicePack
@@ -242,6 +308,7 @@ export class IdeasService {
           }
         : undefined,
       providerIdentifier: integration.providerIdentifier,
+      session: this.serializeDraftSession(session),
       ...parsed,
     };
   }
@@ -334,6 +401,44 @@ export class IdeasService {
     ]
       .filter(Boolean)
       .join('\n\n');
+  }
+
+  private buildRawDraftContent(
+    rawNotes: string,
+    sourceUrl?: string,
+    tags?: string[]
+  ) {
+    const cleanedTags = this.cleanTags(tags);
+    return [
+      sourceUrl?.trim() ? `Source: ${sourceUrl.trim()}` : '',
+      cleanedTags.length ? `Tags: ${cleanedTags.join(', ')}` : '',
+      'Raw notes:',
+      rawNotes.trim(),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  private serializeDraftSession(session: any) {
+    return {
+      id: session.id,
+      sourceKind: session.sourceKind,
+      rawNotes: session.rawNotes,
+      sourceUrl: session.sourceUrl,
+      tags: this.parseTags(session.tags),
+      instructions: session.instructions,
+      model: session.model,
+      inferenceId: session.inferenceId,
+      questions: this.parseTags(session.questions),
+      angle: session.angle,
+      structure: session.structure,
+      draft: session.draft,
+      createdAt: session.createdAt,
+      updatedAt: session.updatedAt,
+      idea: session.idea,
+      integration: session.integration,
+      voicePack: session.voicePack,
+    };
   }
 
   private defaultSettingsForIntegration(

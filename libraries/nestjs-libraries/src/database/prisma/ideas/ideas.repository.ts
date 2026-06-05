@@ -16,11 +16,28 @@ type CreateIdeaInput = {
   status: IdeaStatus;
 };
 
+type CreateDraftSessionInput = {
+  ideaId?: string;
+  integrationId: string;
+  voicePackId?: string;
+  sourceKind: 'idea' | 'raw';
+  rawNotes?: string;
+  sourceUrl?: string;
+  tags: string[];
+  instructions?: string;
+  model: string;
+  inferenceId?: string;
+  questions: string[];
+  angle: string;
+  structure: string;
+  draft: string;
+};
+
 @Injectable()
 export class IdeasRepository {
   constructor(
     private _ideas: PrismaRepository<
-      'ideas' | 'ideaEntries' | 'post' | 'voicePacks'
+      'ideas' | 'ideaEntries' | 'ideaDraftSessions' | 'post' | 'voicePacks'
     >
   ) {}
 
@@ -226,6 +243,86 @@ export class IdeasRepository {
         organizationId: orgId,
         deletedAt: null,
         ...(id ? { id } : { isDefault: true }),
+      },
+    });
+  }
+
+  listDraftSessions(orgId: string, ideaId?: string) {
+    return this._ideas.model.ideaDraftSessions.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        ...(ideaId ? { ideaId } : {}),
+      },
+      include: {
+        idea: {
+          select: {
+            id: true,
+            title: true,
+            sourceUrl: true,
+          },
+        },
+        integration: {
+          select: {
+            id: true,
+            name: true,
+            providerIdentifier: true,
+          },
+        },
+        voicePack: {
+          select: {
+            id: true,
+            name: true,
+            isDefault: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+  }
+
+  createDraftSession(orgId: string, input: CreateDraftSessionInput) {
+    return this._ideas.model.ideaDraftSessions.create({
+      data: {
+        organizationId: orgId,
+        ideaId: input.ideaId,
+        integrationId: input.integrationId,
+        voicePackId: input.voicePackId,
+        sourceKind: input.sourceKind,
+        rawNotes: input.rawNotes,
+        sourceUrl: input.sourceUrl,
+        tags: JSON.stringify(input.tags),
+        instructions: input.instructions,
+        model: input.model,
+        inferenceId: input.inferenceId,
+        questions: JSON.stringify(input.questions),
+        angle: input.angle,
+        structure: input.structure,
+        draft: input.draft,
+      },
+      include: {
+        idea: {
+          select: {
+            id: true,
+            title: true,
+            sourceUrl: true,
+          },
+        },
+        integration: {
+          select: {
+            id: true,
+            name: true,
+            providerIdentifier: true,
+          },
+        },
+        voicePack: {
+          select: {
+            id: true,
+            name: true,
+            isDefault: true,
+          },
+        },
       },
     });
   }

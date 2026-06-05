@@ -27,6 +27,7 @@ model Organization {
   errors              Errors[]
   github              GitHub[]
   ideas               Ideas[]
+  ideaDraftSessions   IdeaDraftSessions[]
   Integration         Integration[]
   media               Media[]
   buyerOrganization   MessagesGroup[]
@@ -343,6 +344,7 @@ model Integration {
   orderItems            OrderItems[]
   plugs                 Plugs[]
   posts                 Post[]
+  ideaDraftSessions     IdeaDraftSessions[]
 
   @@unique([organizationId, internalId])
   @@index([rootInternalId])
@@ -373,18 +375,19 @@ model Signatures {
 }
 
 model Ideas {
-  id             String        @id @default(uuid())
+  id             String              @id @default(uuid())
   organizationId String
   title          String?
   sourceUrl      String?
-  tags           String        @default("[]")
-  status         IdeaStatus    @default(INBOX)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  tags           String              @default("[]")
+  status         IdeaStatus          @default(INBOX)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   deletedAt      DateTime?
   entries        IdeaEntries[]
+  draftSessions  IdeaDraftSessions[]
   posts          Post[]
-  organization   Organization  @relation(fields: [organizationId], references: [id])
+  organization   Organization        @relation(fields: [organizationId], references: [id])
 
   @@index([organizationId])
   @@index([status])
@@ -394,16 +397,17 @@ model Ideas {
 }
 
 model VoicePacks {
-  id             String       @id @default(uuid())
+  id             String              @id @default(uuid())
   organizationId String
   name           String
   description    String?
   markdown       String
-  isDefault      Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  isDefault      Boolean             @default(false)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   deletedAt      DateTime?
-  organization   Organization @relation(fields: [organizationId], references: [id])
+  organization   Organization        @relation(fields: [organizationId], references: [id])
+  draftSessions  IdeaDraftSessions[]
 
   @@index([organizationId])
   @@index([isDefault])
@@ -420,6 +424,40 @@ model IdeaEntries {
   idea      Ideas     @relation(fields: [ideaId], references: [id])
 
   @@index([ideaId])
+  @@index([createdAt])
+  @@index([deletedAt])
+}
+
+model IdeaDraftSessions {
+  id             String       @id @default(uuid())
+  organizationId String
+  ideaId         String?
+  integrationId  String
+  voicePackId    String?
+  sourceKind     String
+  rawNotes       String?
+  sourceUrl      String?
+  tags           String       @default("[]")
+  instructions   String?
+  model          String
+  inferenceId    String?
+  questions      String       @default("[]")
+  angle          String       @default("")
+  structure      String       @default("")
+  draft          String
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  deletedAt      DateTime?
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  idea           Ideas?       @relation(fields: [ideaId], references: [id])
+  integration    Integration  @relation(fields: [integrationId], references: [id])
+  voicePack      VoicePacks?  @relation(fields: [voicePackId], references: [id])
+
+  @@index([organizationId])
+  @@index([ideaId])
+  @@index([integrationId])
+  @@index([voicePackId])
+  @@index([sourceKind])
   @@index([createdAt])
   @@index([deletedAt])
 }
