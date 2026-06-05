@@ -50,6 +50,8 @@ import { AdminStatsRepository } from '@gitroom/nestjs-libraries/database/prisma/
 import { AdminStatsService } from '@gitroom/nestjs-libraries/database/prisma/admin-stats/admin-stats.service';
 import { IdeasRepository } from '@gitroom/nestjs-libraries/database/prisma/ideas/ideas.repository';
 import { IdeasService } from '@gitroom/nestjs-libraries/database/prisma/ideas/ideas.service';
+import { VoicePacksRepository } from '@gitroom/nestjs-libraries/database/prisma/voice-packs/voice-packs.repository';
+import { VoicePacksService } from '@gitroom/nestjs-libraries/database/prisma/voice-packs/voice-packs.service';
 
 @Global()
 @Module({
@@ -105,6 +107,8 @@ import { IdeasService } from '@gitroom/nestjs-libraries/database/prisma/ideas/id
     AdminStatsService,
     IdeasRepository,
     IdeasService,
+    VoicePacksRepository,
+    VoicePacksService,
   ],
   get exports() {
     return this.providers;

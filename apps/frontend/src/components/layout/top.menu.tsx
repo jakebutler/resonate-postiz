@@ -94,6 +94,27 @@ export const useMenuItem = () => {
       path: '/ideas',
     },
     {
+      name: 'Voice',
+      icon: (
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="22"
+          height="22"
+          viewBox="0 0 24 24"
+          fill="none"
+        >
+          <path
+            d="M7 8H17M7 12H14M5 4H19C20.1046 4 21 4.89543 21 6V15C21 16.1046 20.1046 17 19 17H9L5 21V17H5C3.89543 17 3 16.1046 3 15V6C3 4.89543 3.89543 4 5 4Z"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ),
+      path: '/voice-packs',
+    },
+    {
       name: t('analytics', 'Analytics'),
       icon: (
         <svg
