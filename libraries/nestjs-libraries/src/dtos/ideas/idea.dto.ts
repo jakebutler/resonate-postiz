@@ -53,3 +53,13 @@ export class UpdateIdeaStatusDto {
   @IsIn(ideaStatuses)
   status: IdeaStatusValue;
 }
+
+export class CreateIdeaDraftDto {
+  @IsString()
+  @MinLength(1)
+  integrationId: string;
+
+  @IsString()
+  @IsOptional()
+  content?: string;
+}

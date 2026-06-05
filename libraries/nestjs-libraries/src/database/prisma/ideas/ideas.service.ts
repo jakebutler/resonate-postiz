@@ -3,10 +3,15 @@ import { IdeaStatus } from '@prisma/client';
 import { IdeasRepository } from '@gitroom/nestjs-libraries/database/prisma/ideas/ideas.repository';
 import {
   AppendIdeaEntryDto,
+  CreateIdeaDraftDto,
   CreateIdeaDto,
   IdeaStatusValue,
   UpdateIdeaStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/ideas/idea.dto';
+import { IntegrationService } from '@gitroom/nestjs-libraries/database/prisma/integrations/integration.service';
+import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/posts.service';
+import { BadRequestException } from '@nestjs/common';
+import dayjs from 'dayjs';
 
 const statusMap: Record<IdeaStatusValue, IdeaStatus> = {
   inbox: IdeaStatus.INBOX,
@@ -26,7 +31,11 @@ const reverseStatusMap: Record<IdeaStatus, IdeaStatusValue> = {
 
 @Injectable()
 export class IdeasService {
-  constructor(private _ideasRepository: IdeasRepository) {}
+  constructor(
+    private _ideasRepository: IdeasRepository,
+    private _integrationService: IntegrationService,
+    private _postsService: PostsService
+  ) {}
 
   async list(
     orgId: string,
@@ -89,6 +98,64 @@ export class IdeasService {
     return this.serializeIdea(idea);
   }
 
+  async createDraft(orgId: string, id: string, body: CreateIdeaDraftDto) {
+    const idea = await this._ideasRepository.get(orgId, id);
+    if (!idea) {
+      throw new NotFoundException('Idea not found');
+    }
+
+    const integration = (
+      await this._integrationService.getIntegrationsList(orgId)
+    ).find((item) => item.id === body.integrationId && !item.disabled);
+    if (!integration) {
+      throw new BadRequestException('Integration not found');
+    }
+
+    const content = body.content?.trim() || this.buildDraftContent(idea);
+    const tags = this.parseTags(idea.tags);
+    const [created] = await this._postsService.createPost(
+      orgId,
+      {
+        type: 'draft',
+        shortLink: false,
+        date: dayjs().add(1, 'day').format('YYYY-MM-DDTHH:mm:00'),
+        tags: [],
+        posts: [
+          {
+            integration: { id: integration.id },
+            value: [
+              {
+                id: '',
+                content,
+                delay: 0,
+                image: [],
+              },
+            ],
+            settings: this.defaultSettingsForIntegration(
+              integration.providerIdentifier,
+              idea.title,
+              tags
+            ) as any,
+            group: '',
+          },
+        ],
+      },
+      'WEB'
+    );
+
+    if (!created?.postId) {
+      throw new BadRequestException('Draft could not be created');
+    }
+
+    await this._ideasRepository.linkPost(orgId, id, created.postId);
+    return {
+      postId: created.postId,
+      integrationId: integration.id,
+      providerIdentifier: integration.providerIdentifier,
+      idea: await this.get(orgId, id),
+    };
+  }
+
   private toStatus(status?: string) {
     return statusMap[status as IdeaStatusValue];
   }
@@ -130,6 +197,46 @@ export class IdeasService {
       updatedAt: idea.updatedAt,
       latestEntry: entries[entries.length - 1] || entries[0],
       entries,
+      posts: (idea.posts || []).map((post: any) => ({
+        id: post.id,
+        state: post.state,
+        content: post.content,
+        releaseURL: post.releaseURL,
+        createdAt: post.createdAt,
+        updatedAt: post.updatedAt,
+        integration: post.integration,
+      })),
+    };
+  }
+
+  private buildDraftContent(idea: any) {
+    const tags = this.parseTags(idea.tags);
+    const entries = (idea.entries || [])
+      .map((entry: any, index: number) => `${index + 1}. ${entry.note}`)
+      .join('\n\n');
+
+    return [
+      idea.title ? `Working title: ${idea.title}` : '',
+      idea.sourceUrl ? `Source: ${idea.sourceUrl}` : '',
+      tags.length ? `Tags: ${tags.join(', ')}` : '',
+      'Idea notes:',
+      entries,
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+  }
+
+  private defaultSettingsForIntegration(
+    providerIdentifier: string,
+    title: string | undefined,
+    tags: string[]
+  ) {
+    const workingTitle = title || 'Idea draft';
+    return {
+      __type: providerIdentifier,
+      title: workingTitle,
+      tags,
+      status: 'draft',
     };
   }
 }

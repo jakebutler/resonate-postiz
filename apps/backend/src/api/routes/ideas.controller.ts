@@ -5,6 +5,7 @@ import { GetOrgFromRequest } from '@gitroom/nestjs-libraries/user/org.from.reque
 import { IdeasService } from '@gitroom/nestjs-libraries/database/prisma/ideas/ideas.service';
 import {
   AppendIdeaEntryDto,
+  CreateIdeaDraftDto,
   CreateIdeaDto,
   UpdateIdeaStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/ideas/idea.dto';
@@ -48,6 +49,15 @@ export class IdeasController {
     @Body() body: AppendIdeaEntryDto
   ) {
     return this._ideasService.append(org.id, id, body);
+  }
+
+  @Post('/:id/drafts')
+  createDraft(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body() body: CreateIdeaDraftDto
+  ) {
+    return this._ideasService.createDraft(org.id, id, body);
   }
 
   @Put('/:id/status')

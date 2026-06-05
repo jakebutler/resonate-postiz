@@ -22,6 +22,25 @@ type Idea = {
   updatedAt: string;
   latestEntry?: IdeaEntry;
   entries: IdeaEntry[];
+  posts: Array<{
+    id: string;
+    state: string;
+    content: string;
+    createdAt: string;
+    releaseURL?: string;
+    integration: {
+      id: string;
+      name: string;
+      providerIdentifier: string;
+    };
+  }>;
+};
+
+type Integration = {
+  id: string;
+  name: string;
+  identifier: string;
+  disabled: boolean;
 };
 
 const statuses: Array<{ value: IdeaStatus | 'all'; label: string }> = [
@@ -64,6 +83,8 @@ export const IdeasComponent = () => {
   const [sourceUrl, setSourceUrl] = useState('');
   const [tags, setTags] = useState('');
   const [appendNote, setAppendNote] = useState('');
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState('');
+  const [draftContent, setDraftContent] = useState('');
   const [isSaving, setIsSaving] = useState(false);
 
   const query = useMemo(() => {
@@ -82,9 +103,15 @@ export const IdeasComponent = () => {
 
   const load = async (path: string) => (await fetch(path)).json();
   const { data: ideas = [], mutate } = useSWR<Idea[]>(query, load);
+  const { data: integrationsResponse } = useSWR<{
+    integrations: Integration[];
+  }>('/integrations/list', load);
   const { data: selectedIdea, mutate: mutateSelected } = useSWR<Idea>(
     selectedId ? `/ideas/${selectedId}` : null,
     load
+  );
+  const integrations = (integrationsResponse?.integrations || []).filter(
+    (integration) => !integration.disabled
   );
 
   const createIdea = async (event: FormEvent) => {
@@ -140,6 +167,25 @@ export const IdeasComponent = () => {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status: nextStatus }),
     });
+    await mutate();
+    await mutateSelected();
+  };
+
+  const createDraft = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedIdea || !selectedIntegrationId) {
+      return;
+    }
+
+    await fetch(`/ideas/${selectedIdea.id}/drafts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        integrationId: selectedIntegrationId,
+        content: draftContent.trim() || undefined,
+      }),
+    });
+    setDraftContent('');
     await mutate();
     await mutateSelected();
   };
@@ -327,6 +373,71 @@ export const IdeasComponent = () => {
                   </div>
                 </div>
               ))}
+            </div>
+
+            <form
+              onSubmit={createDraft}
+              className="border border-newBgLineColor rounded-[8px] p-[16px] flex flex-col gap-[10px]"
+            >
+              <div className="font-[700]">Create draft Post</div>
+              <div className="grid grid-cols-[240px_1fr] gap-[10px]">
+                <select
+                  value={selectedIntegrationId}
+                  onChange={(event) =>
+                    setSelectedIntegrationId(event.target.value)
+                  }
+                  className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+                >
+                  <option value="">Select channel</option>
+                  {integrations.map((integration) => (
+                    <option key={integration.id} value={integration.id}>
+                      {integration.name} ({integration.identifier})
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={draftContent}
+                  onChange={(event) => setDraftContent(event.target.value)}
+                  placeholder="Optional override copy; blank uses the Idea thread"
+                  className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+                />
+              </div>
+              <button
+                disabled={!selectedIntegrationId}
+                className="bg-forth text-white rounded-[8px] px-[14px] py-[10px] font-[700] disabled:opacity-50 w-fit"
+              >
+                Create Draft
+              </button>
+            </form>
+
+            <div className="flex flex-col gap-[10px]">
+              <div className="font-[700]">Linked draft Posts</div>
+              {(selectedFromList.posts || []).map((post) => (
+                <div
+                  key={post.id}
+                  className="border border-newBgLineColor rounded-[8px] p-[14px] bg-newBgColor"
+                >
+                  <div className="flex gap-[10px] items-center">
+                    <div className="font-[700] flex-1">
+                      {post.integration.name}
+                    </div>
+                    <span className="text-[11px] uppercase text-textItemBlur">
+                      {post.state}
+                    </span>
+                  </div>
+                  <div className="text-[12px] text-textItemBlur mt-[4px]">
+                    {formatDate(post.createdAt)}
+                  </div>
+                  <div className="line-clamp-2 mt-[8px] text-[13px]">
+                    {post.content}
+                  </div>
+                </div>
+              ))}
+              {!(selectedFromList.posts || []).length ? (
+                <div className="text-textItemBlur">
+                  No draft Posts have been created from this Idea yet.
+                </div>
+              ) : null}
             </div>
 
             <form onSubmit={appendEntry} className="flex flex-col gap-[10px]">
