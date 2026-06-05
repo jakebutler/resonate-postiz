@@ -19,7 +19,9 @@ type CreateIdeaInput = {
 @Injectable()
 export class IdeasRepository {
   constructor(
-    private _ideas: PrismaRepository<'ideas' | 'ideaEntries' | 'post'>
+    private _ideas: PrismaRepository<
+      'ideas' | 'ideaEntries' | 'post' | 'voicePacks'
+    >
   ) {}
 
   list(orgId: string, filters: ListIdeasFilters) {
@@ -196,6 +198,16 @@ export class IdeasRepository {
       where: { id: postId, organizationId: orgId },
       data: { ideaId },
       select: { id: true },
+    });
+  }
+
+  getVoicePack(orgId: string, id?: string) {
+    return this._ideas.model.voicePacks.findFirst({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        ...(id ? { id } : { isDefault: true }),
+      },
     });
   }
 }

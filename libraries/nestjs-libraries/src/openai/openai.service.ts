@@ -18,6 +18,58 @@ const VoicePrompt = z.object({
 
 @Injectable()
 export class OpenaiService {
+  async pioneerChat(params: {
+    messages: Array<{ role: 'system' | 'user' | 'assistant'; content: string }>;
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+    store?: boolean;
+  }) {
+    const apiKey = process.env.PIONEER_API_KEY;
+    if (!apiKey) {
+      throw new Error('Missing required environment variable: PIONEER_API_KEY');
+    }
+
+    const response = await fetch(
+      `${
+        process.env.PIONEER_BASE_URL || 'https://api.pioneer.ai/v1'
+      }/chat/completions`,
+      {
+        method: 'POST',
+        headers: {
+          'X-API-Key': apiKey,
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model:
+            params.model ||
+            process.env.PIONEER_DRAFT_MODEL ||
+            'claude-opus-4-7',
+          messages: params.messages,
+          temperature: params.temperature ?? 0.4,
+          max_tokens: params.maxTokens ?? 1800,
+          store: params.store ?? false,
+        }),
+      }
+    );
+
+    const json = await response.json().catch(() => ({} as any));
+    if (!response.ok) {
+      throw new Error(`Pioneer inference failed: ${JSON.stringify(json)}`);
+    }
+
+    return {
+      model:
+        json.model ||
+        params.model ||
+        process.env.PIONEER_DRAFT_MODEL ||
+        'claude-opus-4-7',
+      content: json.choices?.[0]?.message?.content || '',
+      inferenceId: json.inference_id || json.id,
+    };
+  }
+
   async generateImage(prompt: string, isVertical = false) {
     // gpt-image models always return base64 (b64_json) and do not accept the
     // `response_format` parameter, unlike the deprecated dall-e-3.

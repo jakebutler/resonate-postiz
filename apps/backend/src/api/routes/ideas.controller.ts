@@ -7,6 +7,7 @@ import {
   AppendIdeaEntryDto,
   CreateIdeaDraftDto,
   CreateIdeaDto,
+  GenerateIdeaDraftDto,
   UpdateIdeaStatusDto,
 } from '@gitroom/nestjs-libraries/dtos/ideas/idea.dto';
 
@@ -58,6 +59,24 @@ export class IdeasController {
     @Body() body: CreateIdeaDraftDto
   ) {
     return this._ideasService.createDraft(org.id, id, body);
+  }
+
+  @Post('/:id/ai-draft')
+  generateDraft(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body() body: GenerateIdeaDraftDto
+  ) {
+    return this._ideasService.generateDraft(org.id, id, body);
+  }
+
+  @Post('/:id/ai-draft/create')
+  generateAndCreateDraft(
+    @GetOrgFromRequest() org: Organization,
+    @Param('id') id: string,
+    @Body() body: GenerateIdeaDraftDto
+  ) {
+    return this._ideasService.generateAndCreateDraft(org.id, id, body);
   }
 
   @Put('/:id/status')

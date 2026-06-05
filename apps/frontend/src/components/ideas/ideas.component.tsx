@@ -43,6 +43,26 @@ type Integration = {
   disabled: boolean;
 };
 
+type VoicePack = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+};
+
+type AiDraft = {
+  model: string;
+  inferenceId?: string;
+  questions: string[];
+  angle: string;
+  structure: string;
+  draft: string;
+  voicePack?: {
+    id: string;
+    name: string;
+    isDefault: boolean;
+  };
+};
+
 const statuses: Array<{ value: IdeaStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'inbox', label: 'Inbox' },
@@ -85,6 +105,11 @@ export const IdeasComponent = () => {
   const [appendNote, setAppendNote] = useState('');
   const [selectedIntegrationId, setSelectedIntegrationId] = useState('');
   const [draftContent, setDraftContent] = useState('');
+  const [selectedVoicePackId, setSelectedVoicePackId] = useState('');
+  const [aiInstructions, setAiInstructions] = useState('');
+  const [aiDraft, setAiDraft] = useState<AiDraft>();
+  const [aiError, setAiError] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   const query = useMemo(() => {
@@ -106,6 +131,7 @@ export const IdeasComponent = () => {
   const { data: integrationsResponse } = useSWR<{
     integrations: Integration[];
   }>('/integrations/list', load);
+  const { data: voicePacks = [] } = useSWR<VoicePack[]>('/voice-packs', load);
   const { data: selectedIdea, mutate: mutateSelected } = useSWR<Idea>(
     selectedId ? `/ideas/${selectedId}` : null,
     load
@@ -186,6 +212,71 @@ export const IdeasComponent = () => {
       }),
     });
     setDraftContent('');
+    await mutate();
+    await mutateSelected();
+  };
+
+  const generateDraft = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!selectedIdea || !selectedIntegrationId) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiError('');
+    const response = await fetch(`/ideas/${selectedIdea.id}/ai-draft`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        integrationId: selectedIntegrationId,
+        voicePackId: selectedVoicePackId || undefined,
+        instructions: aiInstructions || undefined,
+        fastDraft: false,
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      setAiError(
+        error?.message || error?.error || 'AI draft generation failed'
+      );
+      setIsGenerating(false);
+      return;
+    }
+    const generated = (await response.json()) as AiDraft;
+    setAiDraft(generated);
+    setDraftContent(generated.draft || '');
+    setIsGenerating(false);
+  };
+
+  const generateAndCreateDraft = async () => {
+    if (!selectedIdea || !selectedIntegrationId) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiError('');
+    const response = await fetch(`/ideas/${selectedIdea.id}/ai-draft/create`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        integrationId: selectedIntegrationId,
+        voicePackId: selectedVoicePackId || undefined,
+        instructions: aiInstructions || undefined,
+        fastDraft: true,
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      setAiError(
+        error?.message || error?.error || 'AI draft generation failed'
+      );
+      setIsGenerating(false);
+      return;
+    }
+    const generated = (await response.json()) as AiDraft;
+    setAiDraft(generated);
+    setDraftContent('');
+    setIsGenerating(false);
     await mutate();
     await mutateSelected();
   };
@@ -408,6 +499,101 @@ export const IdeasComponent = () => {
               >
                 Create Draft
               </button>
+            </form>
+
+            <form
+              onSubmit={generateDraft}
+              className="border border-newBgLineColor rounded-[8px] p-[16px] flex flex-col gap-[10px]"
+            >
+              <div className="font-[700]">AI brainstorm and draft</div>
+              <div className="grid grid-cols-[240px_1fr] gap-[10px]">
+                <select
+                  value={selectedVoicePackId}
+                  onChange={(event) =>
+                    setSelectedVoicePackId(event.target.value)
+                  }
+                  className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+                >
+                  <option value="">Default voice pack</option>
+                  {voicePacks.map((pack) => (
+                    <option key={pack.id} value={pack.id}>
+                      {pack.name}
+                      {pack.isDefault ? ' (default)' : ''}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  value={aiInstructions}
+                  onChange={(event) => setAiInstructions(event.target.value)}
+                  placeholder="Optional drafting instructions"
+                  className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+                />
+              </div>
+              <div className="flex gap-[10px]">
+                <button
+                  disabled={
+                    isGenerating || !selectedIntegrationId || !selectedIdea
+                  }
+                  className="bg-forth text-white rounded-[8px] px-[14px] py-[10px] font-[700] disabled:opacity-50"
+                >
+                  Generate Candidate
+                </button>
+                <button
+                  type="button"
+                  disabled={
+                    isGenerating || !selectedIntegrationId || !selectedIdea
+                  }
+                  onClick={generateAndCreateDraft}
+                  className="border border-newBgLineColor rounded-[8px] px-[14px] py-[10px] font-[700] disabled:opacity-50"
+                >
+                  Fast Draft
+                </button>
+              </div>
+              {aiError ? (
+                <div className="text-red-400 bg-newBgColor rounded-[8px] border border-red-900/40 p-[12px]">
+                  {aiError}
+                </div>
+              ) : null}
+              {aiDraft ? (
+                <div className="bg-newBgColor rounded-[8px] border border-newBgLineColor p-[14px] flex flex-col gap-[10px]">
+                  <div className="text-[12px] text-textItemBlur">
+                    {aiDraft.model}
+                    {aiDraft.voicePack?.name
+                      ? ` · ${aiDraft.voicePack.name}`
+                      : ''}
+                  </div>
+                  {aiDraft.questions.length ? (
+                    <div>
+                      <div className="font-[700] mb-[6px]">Questions</div>
+                      <ul className="list-disc ps-[20px]">
+                        {aiDraft.questions.map((question) => (
+                          <li key={question}>{question}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
+                  {aiDraft.angle ? (
+                    <div>
+                      <div className="font-[700] mb-[6px]">Angle</div>
+                      <div className="whitespace-pre-wrap">{aiDraft.angle}</div>
+                    </div>
+                  ) : null}
+                  {aiDraft.structure ? (
+                    <div>
+                      <div className="font-[700] mb-[6px]">Structure</div>
+                      <div className="whitespace-pre-wrap">
+                        {aiDraft.structure}
+                      </div>
+                    </div>
+                  ) : null}
+                  <div>
+                    <div className="font-[700] mb-[6px]">Draft</div>
+                    <div className="whitespace-pre-wrap leading-[1.6]">
+                      {aiDraft.draft}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </form>
 
             <div className="flex flex-col gap-[10px]">

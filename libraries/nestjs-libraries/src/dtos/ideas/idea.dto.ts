@@ -1,6 +1,7 @@
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsIn,
   IsOptional,
   IsString,
@@ -62,4 +63,22 @@ export class CreateIdeaDraftDto {
   @IsString()
   @IsOptional()
   content?: string;
+}
+
+export class GenerateIdeaDraftDto {
+  @IsString()
+  @MinLength(1)
+  integrationId: string;
+
+  @IsString()
+  @IsOptional()
+  voicePackId?: string;
+
+  @IsString()
+  @IsOptional()
+  instructions?: string;
+
+  @IsBoolean()
+  @IsOptional()
+  fastDraft?: boolean;
 }
