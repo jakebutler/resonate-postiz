@@ -63,6 +63,25 @@ export class IdeasRepository {
     });
   }
 
+  sourceCandidates(orgId: string) {
+    return this._ideas.model.ideas.findMany({
+      where: {
+        organizationId: orgId,
+        deletedAt: null,
+        sourceUrl: { not: null },
+      },
+      include: {
+        entries: {
+          where: { deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: 200,
+    });
+  }
+
   get(orgId: string, id: string) {
     return this._ideas.model.ideas.findFirst({
       where: { id, organizationId: orgId, deletedAt: null },

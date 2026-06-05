@@ -30,6 +30,14 @@ export class IdeasController {
     });
   }
 
+  @Get('/source-matches')
+  sourceMatches(
+    @GetOrgFromRequest() org: Organization,
+    @Query('sourceUrl') sourceUrl?: string
+  ) {
+    return this._ideasService.sourceMatches(org.id, sourceUrl);
+  }
+
   @Get('/:id')
   getIdea(@GetOrgFromRequest() org: Organization, @Param('id') id: string) {
     return this._ideasService.get(org.id, id);
