@@ -190,7 +190,12 @@ export class IdeasService {
     };
   }
 
-  async generateDraft(orgId: string, id: string, body: GenerateIdeaDraftDto) {
+  async generateDraft(
+    orgId: string,
+    id: string,
+    body: GenerateIdeaDraftDto,
+    brandName?: string
+  ) {
     const idea = await this._ideasRepository.get(orgId, id);
     if (!idea) {
       throw new NotFoundException('Idea not found');
@@ -202,10 +207,15 @@ export class IdeasService {
       voicePackId: body.voicePackId,
       instructions: body.instructions,
       fastDraft: body.fastDraft,
+      brandName,
     });
   }
 
-  async generateRawDraft(orgId: string, body: GenerateRawIdeaDraftDto) {
+  async generateRawDraft(
+    orgId: string,
+    body: GenerateRawIdeaDraftDto,
+    brandName?: string
+  ) {
     return this.generateDraftCandidate(orgId, {
       rawNotes: body.rawNotes,
       sourceUrl: body.sourceUrl,
@@ -214,6 +224,7 @@ export class IdeasService {
       voicePackId: body.voicePackId,
       instructions: body.instructions,
       fastDraft: body.fastDraft,
+      brandName,
     });
   }
 
@@ -228,6 +239,7 @@ export class IdeasService {
       voicePackId?: string;
       instructions?: string;
       fastDraft?: boolean;
+      brandName?: string;
     }
   ) {
     const integration = (
@@ -252,6 +264,7 @@ export class IdeasService {
       'questions must be an array of strings. angle, structure, and draft must be strings.',
     ].join('\n');
     const user = [
+      `Brand/workspace: ${input.brandName?.trim() || orgId}`,
       `Target channel: ${integration.name} (${integration.providerIdentifier})`,
       input.fastDraft
         ? 'Fast draft requested: yes'
@@ -316,12 +329,18 @@ export class IdeasService {
   async generateAndCreateDraft(
     orgId: string,
     id: string,
-    body: GenerateIdeaDraftDto
+    body: GenerateIdeaDraftDto,
+    brandName?: string
   ) {
-    const generated = await this.generateDraft(orgId, id, {
-      ...body,
-      fastDraft: body.fastDraft ?? true,
-    });
+    const generated = await this.generateDraft(
+      orgId,
+      id,
+      {
+        ...body,
+        fastDraft: body.fastDraft ?? true,
+      },
+      brandName
+    );
     const created = await this.createDraft(orgId, id, {
       integrationId: body.integrationId,
       content: generated.draft,
