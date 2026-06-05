@@ -14,6 +14,10 @@ import { PostsService } from '@gitroom/nestjs-libraries/database/prisma/posts/po
 import { BadRequestException } from '@nestjs/common';
 import dayjs from 'dayjs';
 import { OpenaiService } from '@gitroom/nestjs-libraries/openai/openai.service';
+import {
+  findIdeaSourceMatches,
+  normalizeIdeaSourceUrl,
+} from '@gitroom/nestjs-libraries/database/prisma/ideas/ideas.source-url';
 
 const statusMap: Record<IdeaStatusValue, IdeaStatus> = {
   inbox: IdeaStatus.INBOX,
@@ -61,6 +65,26 @@ export class IdeasService {
     }
 
     return this.serializeIdea(idea);
+  }
+
+  async sourceMatches(orgId: string, sourceUrl?: string) {
+    const normalizedSourceUrl = normalizeIdeaSourceUrl(sourceUrl);
+    if (!normalizedSourceUrl) {
+      return {
+        normalizedSourceUrl,
+        matches: [],
+      };
+    }
+
+    const candidates = await this._ideasRepository.sourceCandidates(orgId);
+    const matches = findIdeaSourceMatches(candidates, sourceUrl).matches.map(
+      (idea) => this.serializeIdea(idea)
+    );
+
+    return {
+      normalizedSourceUrl,
+      matches,
+    };
   }
 
   async create(orgId: string, body: CreateIdeaDto) {

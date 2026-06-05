@@ -2,8 +2,8 @@
 
 import { useFetch } from '@gitroom/helpers/utils/custom.fetch';
 import clsx from 'clsx';
-import { FormEvent, useMemo, useState } from 'react';
-import useSWR from 'swr';
+import { FormEvent, useEffect, useMemo, useState } from 'react';
+import useSWR, { mutate as mutateGlobal } from 'swr';
 
 type IdeaStatus = 'inbox' | 'reviewing' | 'ready' | 'used' | 'archived';
 
@@ -63,6 +63,11 @@ type AiDraft = {
   };
 };
 
+type SourceMatchesResponse = {
+  normalizedSourceUrl?: string;
+  matches: Idea[];
+};
+
 const statuses: Array<{ value: IdeaStatus | 'all'; label: string }> = [
   { value: 'all', label: 'All' },
   { value: 'inbox', label: 'Inbox' },
@@ -101,6 +106,7 @@ export const IdeasComponent = () => {
   const [title, setTitle] = useState('');
   const [note, setNote] = useState('');
   const [sourceUrl, setSourceUrl] = useState('');
+  const [allowCreateDuplicate, setAllowCreateDuplicate] = useState(false);
   const [tags, setTags] = useState('');
   const [appendNote, setAppendNote] = useState('');
   const [selectedIntegrationId, setSelectedIntegrationId] = useState('');
@@ -125,9 +131,19 @@ export const IdeasComponent = () => {
     }
     return `/ideas?${params.toString()}`;
   }, [q, status, includeArchived]);
+  const sourceMatchQuery = useMemo(() => {
+    const trimmed = sourceUrl.trim();
+    if (!/^https?:\/\//.test(trimmed)) {
+      return null;
+    }
+
+    return `/ideas/source-matches?sourceUrl=${encodeURIComponent(trimmed)}`;
+  }, [sourceUrl]);
 
   const load = async (path: string) => (await fetch(path)).json();
   const { data: ideas = [], mutate } = useSWR<Idea[]>(query, load);
+  const { data: sourceMatchResponse, mutate: mutateSourceMatches } =
+    useSWR<SourceMatchesResponse>(sourceMatchQuery, load);
   const { data: integrationsResponse } = useSWR<{
     integrations: Integration[];
   }>('/integrations/list', load);
@@ -139,10 +155,18 @@ export const IdeasComponent = () => {
   const integrations = (integrationsResponse?.integrations || []).filter(
     (integration) => !integration.disabled
   );
+  const sourceMatches = sourceMatchResponse?.matches || [];
+
+  useEffect(() => {
+    setAllowCreateDuplicate(false);
+  }, [sourceUrl]);
 
   const createIdea = async (event: FormEvent) => {
     event.preventDefault();
     if (!note.trim()) {
+      return;
+    }
+    if (sourceMatches.length && !allowCreateDuplicate) {
       return;
     }
 
@@ -162,9 +186,34 @@ export const IdeasComponent = () => {
     setTitle('');
     setNote('');
     setSourceUrl('');
+    setAllowCreateDuplicate(false);
     setTags('');
     setIsSaving(false);
     await mutate();
+    await mutateSourceMatches();
+  };
+
+  const appendCaptureToMatch = async (idea: Idea) => {
+    if (!note.trim()) {
+      return;
+    }
+
+    setIsSaving(true);
+    await fetch(`/ideas/${idea.id}/entries`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ note }),
+    });
+    setSelectedId(idea.id);
+    setTitle('');
+    setNote('');
+    setSourceUrl('');
+    setAllowCreateDuplicate(false);
+    setTags('');
+    setIsSaving(false);
+    await mutate();
+    await mutateSourceMatches();
+    await mutateGlobal(`/ideas/${idea.id}`);
   };
 
   const appendEntry = async (event: FormEvent) => {
@@ -309,6 +358,51 @@ export const IdeasComponent = () => {
             placeholder="https://source.example"
             className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
           />
+          {sourceMatches.length ? (
+            <div className="rounded-[8px] border border-yellow-700/40 bg-yellow-950/20 p-[12px] text-[13px]">
+              <div className="font-[700] text-yellow-200">
+                Existing Ideas already use this source
+              </div>
+              <div className="mt-[4px] text-textItemBlur break-all">
+                Normalized source: {sourceMatchResponse?.normalizedSourceUrl}
+              </div>
+              <div className="mt-[10px] flex flex-col gap-[8px]">
+                {sourceMatches.map((match) => (
+                  <div
+                    key={match.id}
+                    className="rounded-[8px] border border-newBgLineColor bg-newBgColor p-[10px]"
+                  >
+                    <div className="font-[700]">{match.title}</div>
+                    <div className="mt-[4px] line-clamp-2 text-textItemBlur">
+                      {match.latestEntry?.note}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={isSaving || !note.trim()}
+                      onClick={() => appendCaptureToMatch(match)}
+                      className="mt-[8px] rounded-[8px] border border-newBgLineColor px-[10px] py-[7px] font-[700] disabled:opacity-50"
+                    >
+                      Append Note
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <button
+                type="button"
+                onClick={() => setAllowCreateDuplicate(true)}
+                className={clsx(
+                  'mt-[10px] rounded-[8px] px-[10px] py-[7px] font-[700]',
+                  allowCreateDuplicate
+                    ? 'bg-forth text-white'
+                    : 'border border-newBgLineColor'
+                )}
+              >
+                {allowCreateDuplicate
+                  ? 'New Idea Allowed'
+                  : 'Create New Idea Anyway'}
+              </button>
+            </div>
+          ) : null}
           <input
             value={tags}
             onChange={(event) => setTags(event.target.value)}
@@ -316,7 +410,11 @@ export const IdeasComponent = () => {
             className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
           />
           <button
-            disabled={isSaving || !note.trim()}
+            disabled={
+              isSaving ||
+              !note.trim() ||
+              (!!sourceMatches.length && !allowCreateDuplicate)
+            }
             className="bg-forth text-white rounded-[8px] px-[14px] py-[10px] font-[700] disabled:opacity-50"
           >
             Capture Idea
