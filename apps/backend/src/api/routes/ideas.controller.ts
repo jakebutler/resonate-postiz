@@ -52,7 +52,7 @@ export class IdeasController {
     @GetOrgFromRequest() org: Organization,
     @Body() body: GenerateRawIdeaDraftDto
   ) {
-    return this._ideasService.generateRawDraft(org.id, body);
+    return this._ideasService.generateRawDraft(org.id, body, org.name);
   }
 
   @Get('/:id')
@@ -92,7 +92,7 @@ export class IdeasController {
     @Param('id') id: string,
     @Body() body: GenerateIdeaDraftDto
   ) {
-    return this._ideasService.generateDraft(org.id, id, body);
+    return this._ideasService.generateDraft(org.id, id, body, org.name);
   }
 
   @Post('/:id/ai-draft/create')
@@ -101,7 +101,12 @@ export class IdeasController {
     @Param('id') id: string,
     @Body() body: GenerateIdeaDraftDto
   ) {
-    return this._ideasService.generateAndCreateDraft(org.id, id, body);
+    return this._ideasService.generateAndCreateDraft(
+      org.id,
+      id,
+      body,
+      org.name
+    );
   }
 
   @Put('/:id/status')
