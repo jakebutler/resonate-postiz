@@ -50,12 +50,44 @@ type VoicePack = {
 };
 
 type AiDraft = {
+  sessionId?: string;
   model: string;
   inferenceId?: string;
   questions: string[];
   angle: string;
   structure: string;
   draft: string;
+  voicePack?: {
+    id: string;
+    name: string;
+    isDefault: boolean;
+  };
+};
+
+type DraftSession = {
+  id: string;
+  sourceKind: 'idea' | 'raw';
+  rawNotes?: string;
+  sourceUrl?: string;
+  tags: string[];
+  instructions?: string;
+  model: string;
+  inferenceId?: string;
+  questions: string[];
+  angle: string;
+  structure: string;
+  draft: string;
+  createdAt: string;
+  idea?: {
+    id: string;
+    title?: string;
+    sourceUrl?: string;
+  };
+  integration: {
+    id: string;
+    name: string;
+    providerIdentifier: string;
+  };
   voicePack?: {
     id: string;
     name: string;
@@ -113,6 +145,9 @@ export const IdeasComponent = () => {
   const [draftContent, setDraftContent] = useState('');
   const [selectedVoicePackId, setSelectedVoicePackId] = useState('');
   const [aiInstructions, setAiInstructions] = useState('');
+  const [rawAiNotes, setRawAiNotes] = useState('');
+  const [rawAiSourceUrl, setRawAiSourceUrl] = useState('');
+  const [rawAiTags, setRawAiTags] = useState('');
   const [aiDraft, setAiDraft] = useState<AiDraft>();
   const [aiError, setAiError] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
@@ -150,6 +185,14 @@ export const IdeasComponent = () => {
   const { data: voicePacks = [] } = useSWR<VoicePack[]>('/voice-packs', load);
   const { data: selectedIdea, mutate: mutateSelected } = useSWR<Idea>(
     selectedId ? `/ideas/${selectedId}` : null,
+    load
+  );
+  const { data: draftSessions = [], mutate: mutateDraftSessions } = useSWR<
+    DraftSession[]
+  >(
+    selectedId
+      ? `/ideas/ai-draft-sessions?ideaId=${encodeURIComponent(selectedId)}`
+      : '/ideas/ai-draft-sessions',
     load
   );
   const integrations = (integrationsResponse?.integrations || []).filter(
@@ -295,6 +338,43 @@ export const IdeasComponent = () => {
     setAiDraft(generated);
     setDraftContent(generated.draft || '');
     setIsGenerating(false);
+    await mutateDraftSessions();
+  };
+
+  const generateRawDraft = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!rawAiNotes.trim() || !selectedIntegrationId) {
+      return;
+    }
+
+    setIsGenerating(true);
+    setAiError('');
+    const response = await fetch('/ideas/ai-draft-sessions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        rawNotes: rawAiNotes,
+        sourceUrl: rawAiSourceUrl.trim() || undefined,
+        tags: tagsFromInput(rawAiTags),
+        integrationId: selectedIntegrationId,
+        voicePackId: selectedVoicePackId || undefined,
+        instructions: aiInstructions || undefined,
+        fastDraft: false,
+      }),
+    });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({}));
+      setAiError(
+        error?.message || error?.error || 'AI draft generation failed'
+      );
+      setIsGenerating(false);
+      return;
+    }
+    const generated = (await response.json()) as AiDraft;
+    setAiDraft(generated);
+    setDraftContent(generated.draft || '');
+    setIsGenerating(false);
+    await mutateDraftSessions();
   };
 
   const generateAndCreateDraft = async () => {
@@ -328,6 +408,27 @@ export const IdeasComponent = () => {
     setIsGenerating(false);
     await mutate();
     await mutateSelected();
+    await mutateDraftSessions();
+  };
+
+  const restoreDraftSession = (session: DraftSession) => {
+    setSelectedIntegrationId(session.integration.id);
+    setSelectedVoicePackId(session.voicePack?.id || '');
+    setAiInstructions(session.instructions || '');
+    setAiDraft({
+      sessionId: session.id,
+      model: session.model,
+      inferenceId: session.inferenceId,
+      questions: session.questions,
+      angle: session.angle,
+      structure: session.structure,
+      draft: session.draft,
+      voicePack: session.voicePack,
+    });
+    setDraftContent(session.draft || '');
+    if (session.idea?.id) {
+      setSelectedId(session.idea.id);
+    }
   };
 
   const selectedFromList =
@@ -452,6 +553,116 @@ export const IdeasComponent = () => {
             </label>
           </div>
         </div>
+
+        <form
+          onSubmit={generateRawDraft}
+          className="p-[16px] border-b border-newBgLineColor flex flex-col gap-[10px]"
+        >
+          <div className="font-[700]">Brainstorm from raw notes</div>
+          <select
+            value={selectedIntegrationId}
+            onChange={(event) => setSelectedIntegrationId(event.target.value)}
+            className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+          >
+            <option value="">Select channel</option>
+            {integrations.map((integration) => (
+              <option key={integration.id} value={integration.id}>
+                {integration.name} ({integration.identifier})
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedVoicePackId}
+            onChange={(event) => setSelectedVoicePackId(event.target.value)}
+            className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+          >
+            <option value="">Default voice pack</option>
+            {voicePacks.map((pack) => (
+              <option key={pack.id} value={pack.id}>
+                {pack.name}
+                {pack.isDefault ? ' (default)' : ''}
+              </option>
+            ))}
+          </select>
+          <textarea
+            value={rawAiNotes}
+            onChange={(event) => setRawAiNotes(event.target.value)}
+            placeholder="Paste rough notes, a source summary, or a half-formed angle"
+            className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none min-h-[96px] resize-none"
+          />
+          <input
+            value={rawAiSourceUrl}
+            onChange={(event) => setRawAiSourceUrl(event.target.value)}
+            placeholder="Optional source URL"
+            className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+          />
+          <input
+            value={rawAiTags}
+            onChange={(event) => setRawAiTags(event.target.value)}
+            placeholder="Optional tags"
+            className="bg-newBgColor border border-newBgLineColor rounded-[8px] px-[12px] py-[10px] outline-none"
+          />
+          <button
+            disabled={
+              isGenerating || !rawAiNotes.trim() || !selectedIntegrationId
+            }
+            className="border border-newBgLineColor rounded-[8px] px-[14px] py-[10px] font-[700] disabled:opacity-50"
+          >
+            Generate Candidate
+          </button>
+          {!selectedFromList && aiDraft ? (
+            <div className="rounded-[8px] border border-newBgLineColor bg-newBgColor p-[12px] text-[13px]">
+              <div className="text-[12px] text-textItemBlur">
+                {aiDraft.model}
+                {aiDraft.voicePack?.name ? ` · ${aiDraft.voicePack.name}` : ''}
+              </div>
+              {aiDraft.questions.length ? (
+                <div className="mt-[8px]">
+                  <div className="font-[700]">Questions</div>
+                  <ul className="list-disc ps-[18px]">
+                    {aiDraft.questions.map((question) => (
+                      <li key={question}>{question}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {aiDraft.angle ? (
+                <div className="mt-[8px]">
+                  <div className="font-[700]">Angle</div>
+                  <div className="line-clamp-3">{aiDraft.angle}</div>
+                </div>
+              ) : null}
+              <div className="mt-[8px]">
+                <div className="font-[700]">Draft</div>
+                <div className="line-clamp-4 whitespace-pre-wrap">
+                  {aiDraft.draft}
+                </div>
+              </div>
+            </div>
+          ) : null}
+          {!selectedFromList && draftSessions.length ? (
+            <div className="flex flex-col gap-[8px]">
+              <div className="font-[700] text-[13px]">Recent sessions</div>
+              {draftSessions.slice(0, 4).map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => restoreDraftSession(session)}
+                  className="text-start rounded-[8px] border border-newBgLineColor bg-newBgColor p-[10px]"
+                >
+                  <div className="font-[700] line-clamp-1">
+                    {session.idea?.title ||
+                      session.rawNotes?.slice(0, 60) ||
+                      'Raw draft session'}
+                  </div>
+                  <div className="text-[12px] text-textItemBlur">
+                    {session.integration.name} · {formatDate(session.createdAt)}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </form>
 
         <div className="flex flex-col">
           {ideas.map((idea) => (
@@ -693,6 +904,40 @@ export const IdeasComponent = () => {
                 </div>
               ) : null}
             </form>
+
+            <div className="border border-newBgLineColor rounded-[8px] p-[16px] flex flex-col gap-[10px]">
+              <div className="font-[700]">Recent AI draft sessions</div>
+              {draftSessions.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => restoreDraftSession(session)}
+                  className="text-start rounded-[8px] border border-newBgLineColor bg-newBgColor p-[12px]"
+                >
+                  <div className="flex gap-[8px] items-center">
+                    <div className="font-[700] flex-1">
+                      {session.idea?.title ||
+                        session.rawNotes?.slice(0, 60) ||
+                        'Raw draft session'}
+                    </div>
+                    <span className="text-[11px] uppercase text-textItemBlur">
+                      {session.sourceKind}
+                    </span>
+                  </div>
+                  <div className="text-[12px] text-textItemBlur mt-[4px]">
+                    {session.integration.name} · {formatDate(session.createdAt)}
+                  </div>
+                  <div className="line-clamp-2 text-[13px] mt-[6px]">
+                    {session.draft}
+                  </div>
+                </button>
+              ))}
+              {!draftSessions.length ? (
+                <div className="text-textItemBlur">
+                  No AI draft sessions have been generated for this view yet.
+                </div>
+              ) : null}
+            </div>
 
             <div className="flex flex-col gap-[10px]">
               <div className="font-[700]">Linked draft Posts</div>

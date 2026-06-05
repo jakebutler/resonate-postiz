@@ -82,3 +82,20 @@ export class GenerateIdeaDraftDto {
   @IsOptional()
   fastDraft?: boolean;
 }
+
+export class GenerateRawIdeaDraftDto extends GenerateIdeaDraftDto {
+  @IsString()
+  @MinLength(1)
+  rawNotes: string;
+
+  @IsString()
+  @IsOptional()
+  @Matches(/^(|https?:\/\/[^\s]+)$/)
+  sourceUrl?: string;
+
+  @IsArray()
+  @ArrayMaxSize(12)
+  @IsString({ each: true })
+  @IsOptional()
+  tags?: string[];
+}
